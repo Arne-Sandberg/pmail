@@ -31,7 +31,9 @@ urlpatterns = [
     path('sent_emails/', views.sent_emails, name='sent_emails'),
     path('received_emails/', views.received_emails, name='received_emails'),
     path('upload_file/', views.FileView.as_view(), name='file_upload'),
-    path('message/read/', views.read_email, name='read_email')
+    path('message/read/', views.read_email, name='read_email'),
+    # get message details
+    path('message_details/<str:msg_id>/', views.MessageDetailsApiView.as_view(), name='message_details')
 ]
 
 if settings.DEBUG:

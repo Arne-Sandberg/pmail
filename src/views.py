@@ -14,11 +14,13 @@ from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 import simplejson
 from . import constants
 from .models import *
+from .permissions import MessageAccessPermission
 from .serializers import AttachmentSerializer, MessageSerializer, RecipientSerializer, \
     HeaderSerializer
 
 class LoginViewCustom(LoginView):
     authentication_classes = (TokenAuthentication,)
+
 
 class MessageView(APIView):
     permission_classes = (IsAuthenticated,)
@@ -61,6 +63,7 @@ class MessageView(APIView):
         for to in to_address_es:
             to  = to.strip()
             Recipient.objects.create(msg_id=message.msg_id, email=to, header='to')
+            Header.objects.create(message=message, name='to', value=to)
         for attachment in attachments:
             file_path = attachment.get('file_path', None)
             file_name = attachment.get('file_name', None)
@@ -127,3 +130,34 @@ class FileView(APIView):
       return Response(file_serializer.data, status=status.HTTP_201_CREATED)
     else:
       return Response(file_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class MessageDetailsApiView(APIView):
+    permission_classes = (IsAuthenticated, MessageAccessPermission)
+    authentication_classes = (JSONWebTokenAuthentication,)
+
+    def message_data(self, message):
+        msg_data = {}
+        msg_data['body'] = message.body
+        headers = Header.objects.filter(msg_id=message.id)
+        msg_data['headers'] = headers
+        attachments = Attachment.objects.filter(message=message)
+        msg_data['attachments'] = attachments if attachments else None
+        return msg_data
+
+    def get(self):
+        msg_id = self.kwargs.get('msg_id', None)
+        data = []
+        try:
+            message = Message.objects.get(pk=msg_id)
+            msg_data = self.message_data(message)
+            data.append(msg_data)
+            msg_data['main'] = True
+            # history of conversions
+            while message.reply_to:
+                message = Message.objects.get(pk=message)
+                msg_data = self.message_data(message)
+                data.append(msg_data)
+            return HttpResponse(simplejson.dumps(data), content_type='application/json')
+        except ObjectDoesNotExist:
+            return Response({'error': {'message does not exist'}}, status=status.HTTP_400_BAD_REQUEST)
